@@ -1,5 +1,7 @@
 package com.bank_management.entity;
 
+import com.bank_management.enums.AccountStatus;
+import com.bank_management.enums.AccountType;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -19,11 +21,13 @@ public class Account {
     @Column(nullable = false)
     private BigDecimal balance;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String accountType;
+    private AccountType accountType;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status;
+    private AccountStatus status;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
@@ -42,14 +46,13 @@ public class Account {
         if (balance == null) {
             balance = BigDecimal.ZERO;
         }
+        if (status == null) {
+            status = AccountStatus.ACTIVE;
+        }
     }
 
     public Long getId() {
         return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
     }
 
     public String getAccountNumber() {
@@ -68,19 +71,19 @@ public class Account {
         this.balance = balance;
     }
 
-    public String getAccountType() {
+    public AccountType getAccountType() {
         return accountType;
     }
 
-    public void setAccountType(String accountType) {
+    public void setAccountType(AccountType accountType) {
         this.accountType = accountType;
     }
 
-    public String getStatus() {
+    public AccountStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(AccountStatus status) {
         this.status = status;
     }
 
