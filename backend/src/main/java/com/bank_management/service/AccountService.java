@@ -120,28 +120,43 @@ public class AccountService {
     }
 
     @Transactional
-    public void transfer(TransferRequest request){
-        Account fromAccount = accountRepository.findById(request.getFromAccountId())
-                .orElseThrow(() -> new AccountNotFoundException("From account not found with id : " + request.getFromAccountId()));
+    public void transfer(TransferRequest request) {
 
-        Account toAccount = accountRepository.findById(request.getToAccountId())
-                .orElseThrow(() -> new AccountNotFoundException("To account not found with id : " + request.getToAccountId()));
+        Long fromId = request.getFromAccountId();
+        Long toId = request.getToAccountId();
 
-        if(fromAccount.getStatus() != AccountStatus.ACTIVE || toAccount.getStatus() != AccountStatus.ACTIVE){
-            throw new RuntimeException("One or both accounts are not active. Cannot perform transfer.");
+        if (fromId.equals(toId)) {
+            throw new RuntimeException( "Source and destination accounts must be different");
         }
 
-        if(request.getAmount().compareTo(BigDecimal.ZERO) <= 0){
-            throw new RuntimeException("Transfer amount must be greater than zero.");
-        }
+        // Always lock the smaller account ID first
+        Long firstId = Math.min(fromId, toId);
+        Long secondId = Math.max(fromId, toId);
 
-        if(fromAccount.getBalance().compareTo(request.getAmount()) < 0){
-            throw new InsufficientBalanceException("Insufficient balance for transfer.");
-        }
+        Account firstAccount = accountRepository
+                .findByIdForUpdate(firstId)
+                .orElseThrow(() -> new AccountNotFoundException("Account not found with id : " + firstId));
 
+        Account secondAccount = accountRepository
+                .findByIdForUpdate(secondId)
+                .orElseThrow(() -> new AccountNotFoundException("Account not found with id : " + secondId));
+
+        // Identify which locked account is source/destination
+        Account fromAccount = fromId.equals(firstId)
+                ? firstAccount
+                : secondAccount;
+
+        Account toAccount = toId.equals(firstId)
+                ? firstAccount
+                : secondAccount;
+        if (fromAccount.getStatus() != AccountStatus.ACTIVE || toAccount.getStatus() != AccountStatus.ACTIVE) {
+            throw new RuntimeException("Both accounts must be active");
+        }
+        if (fromAccount.getBalance()
+                .compareTo(request.getAmount()) < 0) {throw new InsufficientBalanceException("Insufficient balance");
+        }
         fromAccount.setBalance(fromAccount.getBalance().subtract(request.getAmount()));
-        toAccount.setBalance(toAccount.getBalance().add(request.getAmount()));
-
+        toAccount.setBalance(toAccount.getBalance().add(request.getAmount()) );
         accountRepository.save(fromAccount);
         accountRepository.save(toAccount);
     }
