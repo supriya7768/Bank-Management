@@ -1,6 +1,7 @@
 package com.bank_management.exception;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -24,5 +25,18 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public String handleAccountNotFoundException(AccountNotFoundException ex){
         return ex.getMessage();
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiError handleValidationException(MethodArgumentNotValidException ex){
+        String message = ex.getBindingResult().getFieldError().getDefaultMessage();
+        return new ApiError(HttpStatus.BAD_REQUEST.value(), message);
+    }
+
+    @ExceptionHandler(InsufficientBalanceException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiError handleInsufficientBalanceException(InsufficientBalanceException ex){
+        return new ApiError(HttpStatus.BAD_REQUEST.value(), ex.getMessage());
     }
 }
