@@ -5,13 +5,17 @@ import com.bank_management.dto.AccountResponse;
 import com.bank_management.dto.TransferRequest;
 import com.bank_management.entity.Account;
 import com.bank_management.entity.Customer;
+import com.bank_management.entity.Transaction;
 import com.bank_management.enums.AccountStatus;
 import com.bank_management.enums.AccountType;
+import com.bank_management.enums.TransactionStatus;
+import com.bank_management.enums.TransactionType;
 import com.bank_management.exception.AccountNotFoundException;
 import com.bank_management.exception.CustomerNotFoundException;
 import com.bank_management.exception.InsufficientBalanceException;
 import com.bank_management.repository.AccountRepository;
 import com.bank_management.repository.CustomerRepository;
+import com.bank_management.repository.TransactionRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
@@ -23,10 +27,12 @@ public class AccountService {
 
     private final CustomerRepository customerRepository;
     private final AccountRepository accountRepository;
+    private final TransactionRepository transactionRepository;
 
-    public AccountService(AccountRepository accountRepository, CustomerRepository customerRepository){
+    public AccountService(AccountRepository accountRepository, CustomerRepository customerRepository, TransactionRepository transactionRepository){
         this.accountRepository = accountRepository;
         this.customerRepository = customerRepository;
+        this.transactionRepository = transactionRepository;
     }
 
     public AccountResponse createAccount(AccountRequest request){
@@ -77,6 +83,7 @@ public class AccountService {
         )).toList();
     }
 
+    @Transactional
     public AccountResponse deposit(Long accountId, BigDecimal amount) {
         Account account = accountRepository.findById(accountId).orElseThrow(() -> new AccountNotFoundException("Account not found with id : " + accountId));
         if(account.getStatus() != AccountStatus.ACTIVE){
@@ -87,6 +94,14 @@ public class AccountService {
         }
         account.setBalance(account.getBalance().add(amount));
         Account savedAccount = accountRepository.save(account);
+
+        Transaction transaction = new Transaction();
+        transaction.setTransactionReference( "TXN-" + System.currentTimeMillis());
+        transaction.setType(TransactionType.DEPOSIT);
+        transaction.setAmount(amount);
+        transaction.setStatus(TransactionStatus.SUCCESS);
+        transaction.setToAccount(account);
+        transactionRepository.save(transaction);
 
         return new AccountResponse(savedAccount.getId(),
                 savedAccount.getAccountNumber(),
@@ -110,6 +125,14 @@ public class AccountService {
         }
         account.setBalance(account.getBalance().subtract(amount));
         Account savedAccount = accountRepository.save(account);
+
+        Transaction transaction = new Transaction();
+        transaction.setTransactionReference("TXN-" + System.currentTimeMillis());
+        transaction.setType(TransactionType.WITHDRAWAL);
+        transaction.setAmount(amount);
+        transaction.setStatus(TransactionStatus.SUCCESS);
+        transaction.setFromAccount(account);
+        transactionRepository.save(transaction);
 
         return new AccountResponse(savedAccount.getId(),
                 savedAccount.getAccountNumber(),
@@ -159,5 +182,14 @@ public class AccountService {
         toAccount.setBalance(toAccount.getBalance().add(request.getAmount()) );
         accountRepository.save(fromAccount);
         accountRepository.save(toAccount);
+
+        Transaction transaction = new Transaction();
+        transaction.setTransactionReference("TXN-" + System.currentTimeMillis());
+        transaction.setType(TransactionType.TRANSFER);
+        transaction.setAmount(request.getAmount());
+        transaction.setStatus(TransactionStatus.SUCCESS);
+        transaction.setFromAccount(fromAccount);
+        transaction.setToAccount(toAccount);
+        transactionRepository.save(transaction);
     }
 }
