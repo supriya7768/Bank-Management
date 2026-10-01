@@ -2,6 +2,7 @@ package com.bank_management.service;
 
 import com.bank_management.dto.AccountRequest;
 import com.bank_management.dto.AccountResponse;
+import com.bank_management.dto.TransactionResponse;
 import com.bank_management.dto.TransferRequest;
 import com.bank_management.entity.Account;
 import com.bank_management.entity.Customer;
@@ -12,11 +13,13 @@ import com.bank_management.enums.TransactionStatus;
 import com.bank_management.enums.TransactionType;
 import com.bank_management.exception.AccountNotFoundException;
 import com.bank_management.exception.CustomerNotFoundException;
+import com.bank_management.exception.DuplicateIdempotencyKeyException;
 import com.bank_management.exception.InsufficientBalanceException;
 import com.bank_management.repository.AccountRepository;
 import com.bank_management.repository.CustomerRepository;
 import com.bank_management.repository.TransactionRepository;
 import jakarta.transaction.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -28,11 +31,13 @@ public class AccountService {
     private final CustomerRepository customerRepository;
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
+    private final TransferExecutionService transferExecutionService;
 
-    public AccountService(AccountRepository accountRepository, CustomerRepository customerRepository, TransactionRepository transactionRepository){
+    public AccountService(AccountRepository accountRepository, CustomerRepository customerRepository, TransactionRepository transactionRepository, TransferExecutionService transferExecutionService){
         this.accountRepository = accountRepository;
         this.customerRepository = customerRepository;
         this.transactionRepository = transactionRepository;
+        this.transferExecutionService = transferExecutionService;
     }
 
     public AccountResponse createAccount(AccountRequest request){
@@ -142,54 +147,57 @@ public class AccountService {
                 savedAccount.getCustomer().getId());
     }
 
-    @Transactional
-    public void transfer(TransferRequest request) {
+    public TransactionResponse transfer(TransferRequest request) {
 
-        Long fromId = request.getFromAccountId();
-        Long toId = request.getToAccountId();
+        Transaction existingTransaction = transactionRepository.findByIdempotencyKey(request.getIdempotencyKey()).orElse(null);
 
-        if (fromId.equals(toId)) {
-            throw new RuntimeException( "Source and destination accounts must be different");
+        // Step 1: Handle a retry using an existing idempotency key
+        if (existingTransaction != null) {
+            boolean sameFromAccount = existingTransaction.getFromAccount().getId().equals(request.getFromAccountId());
+            boolean sameToAccount = existingTransaction.getToAccount().getId().equals(request.getToAccountId());
+            boolean sameAmount = existingTransaction.getAmount().compareTo(request.getAmount()) == 0;
+
+            if (!sameFromAccount || !sameToAccount || !sameAmount) {
+                throw new DuplicateIdempotencyKeyException("Idempotency key has already been used for a different request");
+            }
+            return mapToResponse(existingTransaction);
         }
 
-        // Always lock the smaller account ID first
-        Long firstId = Math.min(fromId, toId);
-        Long secondId = Math.max(fromId, toId);
+        // Step 2: Execute the transfer in the separate transactional service
+        try {
+            return transferExecutionService.executeTransfer(request);
+        } catch (DataIntegrityViolationException e) {
+            // Step 3: A concurrent request may have inserted the same key.
+            // Look up the transaction after the failed transaction has rolled back.
+            Transaction concurrentTransaction =
+                    transactionRepository.findByIdempotencyKey(request.getIdempotencyKey()).orElse(null);
 
-        Account firstAccount = accountRepository
-                .findByIdForUpdate(firstId)
-                .orElseThrow(() -> new AccountNotFoundException("Account not found with id : " + firstId));
+            if (concurrentTransaction == null) {
+                throw e;
+            }
 
-        Account secondAccount = accountRepository
-                .findByIdForUpdate(secondId)
-                .orElseThrow(() -> new AccountNotFoundException("Account not found with id : " + secondId));
+            boolean sameFromAccount = concurrentTransaction.getFromAccount().getId().equals(request.getFromAccountId());
+            boolean sameToAccount = concurrentTransaction.getToAccount().getId().equals(request.getToAccountId());
+            boolean sameAmount = concurrentTransaction.getAmount().compareTo(request.getAmount()) == 0;
 
-        // Identify which locked account is source/destination
-        Account fromAccount = fromId.equals(firstId)
-                ? firstAccount
-                : secondAccount;
+            if (!sameFromAccount || !sameToAccount || !sameAmount) {
+                throw new DuplicateIdempotencyKeyException("Idempotency key has already been used for a different request");
+            }
 
-        Account toAccount = toId.equals(firstId)
-                ? firstAccount
-                : secondAccount;
-        if (fromAccount.getStatus() != AccountStatus.ACTIVE || toAccount.getStatus() != AccountStatus.ACTIVE) {
-            throw new RuntimeException("Both accounts must be active");
+            return mapToResponse(concurrentTransaction);
         }
-        if (fromAccount.getBalance()
-                .compareTo(request.getAmount()) < 0) {throw new InsufficientBalanceException("Insufficient balance");
-        }
-        fromAccount.setBalance(fromAccount.getBalance().subtract(request.getAmount()));
-        toAccount.setBalance(toAccount.getBalance().add(request.getAmount()) );
-        accountRepository.save(fromAccount);
-        accountRepository.save(toAccount);
+    }
 
-        Transaction transaction = new Transaction();
-        transaction.setTransactionReference("TXN-" + System.currentTimeMillis());
-        transaction.setType(TransactionType.TRANSFER);
-        transaction.setAmount(request.getAmount());
-        transaction.setStatus(TransactionStatus.SUCCESS);
-        transaction.setFromAccount(fromAccount);
-        transaction.setToAccount(toAccount);
-        transactionRepository.save(transaction);
+    private TransactionResponse mapToResponse(Transaction transaction) {
+        return new TransactionResponse(
+                transaction.getId(),
+                transaction.getTransactionReference(),
+                transaction.getType().name(),
+                transaction.getAmount(),
+                transaction.getStatus().name(),
+                transaction.getFromAccount().getId(),
+                transaction.getToAccount().getId(),
+                transaction.getCreatedAt()
+        );
     }
 }

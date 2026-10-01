@@ -29,6 +29,9 @@ public class Transaction {
     @Column(nullable = false)
     private TransactionStatus status;
 
+    @Column(nullable = false, unique = true)
+    private String idempotencyKey;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -82,6 +85,14 @@ public class Transaction {
 
     public void setStatus(TransactionStatus status) {
         this.status = status;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
     }
 
     public LocalDateTime getCreatedAt() {

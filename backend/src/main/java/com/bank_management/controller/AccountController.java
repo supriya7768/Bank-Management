@@ -1,9 +1,6 @@
 package com.bank_management.controller;
 
-import com.bank_management.dto.AccountRequest;
-import com.bank_management.dto.AccountResponse;
-import com.bank_management.dto.DepositRequest;
-import com.bank_management.dto.TransferRequest;
+import com.bank_management.dto.*;
 import com.bank_management.service.AccountService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -46,9 +43,8 @@ public class AccountController {
     }
 
     @PostMapping("/transfer")
-    public ResponseEntity<Void> transfer(@Valid @RequestBody TransferRequest request) {
-        accountService.transfer(request);
-        return ResponseEntity.ok().build();
+    public TransactionResponse transfer(@Valid @RequestBody TransferRequest request) {
+        return accountService.transfer(request);
     }
 
 }

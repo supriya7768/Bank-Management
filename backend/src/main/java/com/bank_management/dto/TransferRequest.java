@@ -1,5 +1,6 @@
 package com.bank_management.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
@@ -16,6 +17,9 @@ public class TransferRequest {
     @NotNull
     @Positive
     private BigDecimal amount;
+
+    @NotBlank(message = "Idempotency key is required")
+    private String idempotencyKey;
 
     public TransferRequest() {
     }
@@ -42,5 +46,13 @@ public class TransferRequest {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
     }
 }
