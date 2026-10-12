@@ -6,6 +6,7 @@ import com.bank_management.entity.Customer;
 import com.bank_management.exception.CustomerAlreadyExistsException;
 import com.bank_management.repository.CustomerRepository;
 import org.springframework.stereotype.Service;
+import java.util.List;
 
 @Service
 public class CustomerService {
@@ -33,6 +34,19 @@ public class CustomerService {
                 savedCustomer.getPhone(),
                 savedCustomer.getAddress()
         );
+    }
+
+    public List<CustomerResponse> getAllCustomers() {
+        return customerRepository.findAll()
+                .stream()
+                .map(customer -> new CustomerResponse(
+                        customer.getId(),
+                        customer.getName(),
+                        customer.getEmail(),
+                        customer.getPhone(),
+                        customer.getAddress()
+                ))
+                .toList();
     }
 
 }
